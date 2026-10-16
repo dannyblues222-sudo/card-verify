@@ -177,11 +177,23 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
     if (tries >= 5) { showError("Too many attempts. Ask the shop for a new verification link."); return; }
     var p = postalInfo($("postal").value);
     busy = true; tries++; refresh(); $("submit").textContent = "Verifying…"; showError("");
-    Promise.resolve(actions.confirm({
-      email: knownEmail || $("email").value.trim(),
+    var confirmOpts = {
       billingAddress: { name: $("name").value.trim(), address: { country: p.country, postal_code: p.value } },
       redirect: "if_required"
-    })).then(function(r){
+    };
+    if (!knownEmail) confirmOpts.email = $("email").value.trim();
+    var settled = false;
+    var timer = setTimeout(function(){
+      if (settled) return; settled = true;
+      busy = false; $("submit").textContent = "Verify card";
+      showError("This is taking too long. If your bank opened a verification window, finish it there. Otherwise tap Verify card to try again.");
+      refresh();
+    }, 45000);
+    var call;
+    try { call = actions.confirm(confirmOpts); } catch(e) { call = Promise.reject(e); }
+    Promise.resolve(call).then(function(r){
+      if (settled) { if (r && r.type === "success") { $("form").hidden = true; $("sub").hidden = true; $("title").hidden = true; showError(""); $("done").hidden = false; } return; }
+      settled = true; clearTimeout(timer);
       busy = false; $("submit").textContent = "Verify card";
       if (r && r.type === "success") {
         $("form").hidden = true; $("sub").hidden = true; $("title").hidden = true; $("done").hidden = false;
@@ -190,6 +202,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
         showError(m || "Your card couldn't be verified. Try again or use a different card."); refresh();
       }
     }, function(err){
+      if (settled) return; settled = true; clearTimeout(timer);
       busy = false; $("submit").textContent = "Verify card";
       showError((err && err.message) || "Something went wrong. Please try again."); refresh();
     });
