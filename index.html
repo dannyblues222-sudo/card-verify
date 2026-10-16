@@ -140,7 +140,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
   function refresh(){ $("submit").disabled = busy || !ready(); }
 
   var paymentElement = checkout.createPaymentElement({
-    fields: { billingDetails: { name: "never", email: "never", phone: "never", address: "never" } },
+    fields: { billingDetails: { name: "never", address: "never" } },
     wallets: { applePay: "never", googlePay: "never" }
   });
   $("form").hidden = false;
