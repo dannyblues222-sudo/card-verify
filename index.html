@@ -8,7 +8,7 @@
 <title>Add a card</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap">
-<script src="https://js.stripe.com/v3/"></script>
+<script src="https://js.stripe.com/endive/stripe.js"></script>
 <style>
 :root{
   --bg:#f6f3f1; --card:#ffffff; --ink:#3b2a2a; --muted:#7a6868; --line:#d9cfcc; --focus:#8a3d32;
@@ -36,6 +36,7 @@ label{font-weight:700;font-size:.95rem}
 .input::placeholder{color:var(--muted)}
 .input:focus,.StripeElement--focus{outline:none;border-color:var(--focus)}
 .StripeElement--invalid,.input[aria-invalid="true"]{border-color:var(--bad)}
+.pe{min-height:180px}
 .hint{font-size:.82rem;color:var(--bad);min-height:1em;margin:0}
 button{border:0;border-radius:12px;padding:16px;font:inherit;font-weight:800;font-size:1.05rem;background:var(--btn);color:var(--btn-ink);cursor:pointer}
 button:disabled{background:var(--btn-off);color:var(--btn-off-ink);cursor:default}
@@ -58,20 +59,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
   <p class="sub" id="sub">We'll check this card with your bank. You won't be charged.</p>
 
   <form id="form" novalidate hidden>
-    <div class="field">
-      <label for="cardNumber">Card number</label>
-      <div id="cardNumber" class="StripeElement"></div>
-    </div>
-    <div class="row">
-      <div class="field">
-        <label for="cardExpiry">Card expiry</label>
-        <div id="cardExpiry" class="StripeElement"></div>
-      </div>
-      <div class="field">
-        <label for="cardCvc">Security code</label>
-        <div id="cardCvc" class="StripeElement"></div>
-      </div>
-    </div>
+    <div id="payment" class="pe"></div>
     <div class="field">
       <label for="name">Name on card</label>
       <input class="input" id="name" name="name" autocomplete="cc-name" placeholder="Full name" required>
@@ -102,28 +90,38 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 (function(){
   // Publishable key only. It is designed to be public. Never put a secret (sk_) or restricted (rk_) key here.
   var PUBLISHABLE_KEY = "pk_live_REPLACE_ME";
-  var MAX_AGE_DAYS = 7;
 
   var $ = function(id){ return document.getElementById(id); };
   function stop(title, text){ $("form").hidden = true; $("sub").hidden = true; $("stopTitle").textContent = title; $("stopText").textContent = text; $("stop").hidden = false; }
+  function showError(t){ var e = $("error"); e.textContent = t || ""; e.hidden = !t; }
 
-  var secret = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  var secret = "";
+  try { secret = decodeURIComponent((location.hash || "").replace(/^#/, "")); } catch(e) {}
   if (location.hash) { try { history.replaceState(null, "", location.pathname); } catch(e) {} }
 
   if (!/^pk_(live|test)_/.test(PUBLISHABLE_KEY) || PUBLISHABLE_KEY.indexOf("REPLACE_ME") > -1) { stop("Not set up yet", "This page is still being set up. Please try again later."); return; }
-  if (!/^seti_[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(secret)) { stop("This link isn't working", "The link looks incomplete. Ask the shop for a new verification link."); return; }
+  if (!/^cs_(live|test)_[A-Za-z0-9]+_secret_\S+$/.test(secret)) { stop("This link isn't working", "The link looks incomplete. Ask the shop for a new verification link."); return; }
   if (typeof Stripe !== "function") { stop("Couldn't load", "Check your connection and reload the page."); return; }
 
   var stripe = Stripe(PUBLISHABLE_KEY);
   var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-  var style = { base: { fontFamily: '"Nunito Sans", -apple-system, "Segoe UI", Roboto, sans-serif', fontSize: "16px", color: dark ? "#f1e8e6" : "#3b2a2a", "::placeholder": { color: dark ? "#b3a3a0" : "#7a6868" } }, invalid: { color: dark ? "#f19a91" : "#a3312b" } };
-  var elements = stripe.elements({ fonts: [{ cssSrc: "https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600&display=swap" }] });
-  var cardNumber = elements.create("cardNumber", { style: style, showIcon: true, placeholder: "____ ____ ____ ____" });
-  var cardExpiry = elements.create("cardExpiry", { style: style });
-  var cardCvc = elements.create("cardCvc", { style: style, placeholder: "___" });
+  var opts = {
+    clientSecret: secret,
+    elementsOptions: {
+      fonts: [{ cssSrc: "https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700&display=swap" }],
+      appearance: {
+        theme: dark ? "night" : "stripe",
+        variables: { fontFamily: '"Nunito Sans", -apple-system, "Segoe UI", Roboto, sans-serif', fontSizeBase: "16px", borderRadius: "12px",
+          colorPrimary: dark ? "#e08c7e" : "#8a3d32", colorBackground: dark ? "#211b1a" : "#ffffff", colorText: dark ? "#f1e8e6" : "#3b2a2a", colorDanger: dark ? "#f19a91" : "#a3312b" },
+        rules: { ".Label": { fontWeight: "700" }, ".Input": { borderWidth: "2px", padding: "14px" } }
+      }
+    }
+  };
+  var init = stripe.initCheckoutElementsSdk || stripe.initCheckout;
+  if (typeof init !== "function") { stop("Couldn't load", "Check your connection and reload the page."); return; }
+  var checkout = init.call(stripe, opts);
 
-  var state = { number:false, expiry:false, cvc:false, brand:"" };
-  var busy = false, tries = 0;
+  var actions = null, cardComplete = false, busy = false, tries = 0;
 
   function postalInfo(v){
     var s = (v || "").toUpperCase().replace(/\s+/g, "");
@@ -131,26 +129,29 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
     if (/^\d{5}(-?\d{4})?$/.test(s)) return { ok:true, value: s.slice(0,5), country:"US" };
     return { ok:false };
   }
-  function ready(){
-    return state.number && state.expiry && state.cvc && $("name").value.trim().length > 1 && postalInfo($("postal").value).ok;
-  }
+  function ready(){ return !!actions && cardComplete && $("name").value.trim().length > 1 && postalInfo($("postal").value).ok; }
   function refresh(){ $("submit").disabled = busy || !ready(); }
 
-  function showError(t){ var e = $("error"); e.textContent = t; e.hidden = !t; }
-
-  stripe.retrieveSetupIntent(secret).then(function(r){
-    if (r.error || !r.setupIntent) { stop("This link isn't working", "Ask the shop for a new verification link."); return; }
-    var si = r.setupIntent;
-    if (si.status === "succeeded") { stop("Already verified", "This card has already been verified. Nothing more to do."); return; }
-    if (si.status === "canceled") { stop("This link has expired", "Ask the shop for a new verification link."); return; }
-    if (si.created && (Date.now()/1000 - si.created) > MAX_AGE_DAYS*86400) { stop("This link has expired", "Ask the shop for a new verification link."); return; }
-    $("form").hidden = false;
-    cardNumber.mount("#cardNumber"); cardExpiry.mount("#cardExpiry"); cardCvc.mount("#cardCvc");
+  var paymentElement = checkout.createPaymentElement({
+    fields: { billingDetails: { name: "never", email: "never", phone: "never", address: "never" } },
+    wallets: { applePay: "never", googlePay: "never" }
   });
+  $("form").hidden = false;
+  paymentElement.mount("#payment");
+  paymentElement.on("change", function(e){ cardComplete = !!e.complete; refresh(); });
 
-  cardNumber.on("change", function(e){ state.number = e.complete; state.brand = e.brand || ""; showError(e.error ? e.error.message : ""); refresh(); });
-  cardExpiry.on("change", function(e){ state.expiry = e.complete; showError(e.error ? e.error.message : ""); refresh(); });
-  cardCvc.on("change", function(e){ state.cvc = e.complete; showError(e.error ? e.error.message : ""); refresh(); });
+  Promise.resolve(checkout.loadActions()).then(function(res){
+    if (!res || res.type !== "success" || !res.actions) { stop("This link has expired", "Ask the shop for a new verification link."); return; }
+    actions = res.actions;
+    try {
+      var sess = actions.getSession && actions.getSession();
+      var st = sess && sess.status && (sess.status.type || sess.status);
+      if (st === "complete") { stop("Already verified", "This card has already been verified. Nothing more to do."); return; }
+      if (st === "expired") { stop("This link has expired", "Ask the shop for a new verification link."); return; }
+    } catch(e) {}
+    refresh();
+  }, function(){ stop("This link has expired", "Ask the shop for a new verification link."); });
+
   $("name").addEventListener("input", refresh);
   $("postal").addEventListener("input", function(){ $("postal").removeAttribute("aria-invalid"); $("postalHint").textContent = ""; refresh(); });
   $("postal").addEventListener("blur", function(){
@@ -166,19 +167,20 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
     if (tries >= 5) { showError("Too many attempts. Ask the shop for a new verification link."); return; }
     var p = postalInfo($("postal").value);
     busy = true; tries++; refresh(); $("submit").textContent = "Verifying…"; showError("");
-    stripe.confirmCardSetup(secret, {
-      payment_method: { card: cardNumber, billing_details: { name: $("name").value.trim(), address: { postal_code: p.value, country: p.country } } }
-    }).then(function(r){
+    Promise.resolve(actions.confirm({
+      billingAddress: { name: $("name").value.trim(), address: { country: p.country, postal_code: p.value } },
+      redirect: "if_required"
+    })).then(function(r){
       busy = false; $("submit").textContent = "Verify card";
-      if (r.error) { showError(r.error.message || "Your card couldn't be verified. Try again or use a different card."); refresh(); return; }
-      if (r.setupIntent && r.setupIntent.status === "succeeded") {
-        $("form").hidden = true; $("sub").hidden = true; $("title").hidden = true;
-        var b = state.brand && state.brand !== "unknown" ? (state.brand.charAt(0).toUpperCase() + state.brand.slice(1)) + " card verified." : "Card verified.";
-        $("doneText").textContent = b + " Thank you. No charge was made.";
-        $("done").hidden = false;
+      if (r && r.type === "success") {
+        $("form").hidden = true; $("sub").hidden = true; $("title").hidden = true; $("done").hidden = false;
       } else {
-        showError("Verification didn't finish. Please try again."); refresh();
+        var m = r && r.error && r.error.message;
+        showError(m || "Your card couldn't be verified. Try again or use a different card."); refresh();
       }
+    }, function(err){
+      busy = false; $("submit").textContent = "Verify card";
+      showError((err && err.message) || "Something went wrong. Please try again."); refresh();
     });
   });
 })();
