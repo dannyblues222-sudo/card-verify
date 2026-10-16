@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Add a card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap">
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+:root{
+  --bg:#f6f3f1; --card:#ffffff; --ink:#3b2a2a; --muted:#7a6868; --line:#d9cfcc; --focus:#8a3d32;
+  --btn:#8a3d32; --btn-ink:#ffffff; --btn-off:#ece7e5; --btn-off-ink:#9b8d8b;
+  --good:#2f7a4d; --good-bg:#e5f3ea; --bad:#a3312b; --bad-bg:#f9e4e2;
+  --font:"Nunito Sans",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#171312; --card:#211b1a; --ink:#f1e8e6; --muted:#b3a3a0; --line:#3d3331; --focus:#e08c7e;
+  --btn:#e08c7e; --btn-ink:#1b1110; --btn-off:#2c2423; --btn-off-ink:#7d6f6d;
+  --good:#7fd6a0; --good-bg:#183326; --bad:#f19a91; --bad-bg:#3a1d1b; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;
+  padding:env(safe-area-inset-top,0) max(16px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0) max(16px,env(safe-area-inset-left,0px))}
+main{max-width:460px;margin:0 auto;padding-block:28px 40px;display:flex;flex-direction:column;gap:20px}
+h1{font-size:1.5rem;font-weight:800;margin:0;text-align:center;text-wrap:balance}
+.sub{margin:0;color:var(--muted);text-align:center}
+form{background:var(--card);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:18px}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+label{font-weight:700;font-size:.95rem}
+.input,.StripeElement{border:2px solid var(--line);border-radius:12px;padding:14px 14px;background:var(--card);min-height:52px;width:100%;font:inherit;color:var(--ink)}
+.input::placeholder{color:var(--muted)}
+.input:focus,.StripeElement--focus{outline:none;border-color:var(--focus)}
+.StripeElement--invalid,.input[aria-invalid="true"]{border-color:var(--bad)}
+.hint{font-size:.82rem;color:var(--bad);min-height:1em;margin:0}
+button{border:0;border-radius:12px;padding:16px;font:inherit;font-weight:800;font-size:1.05rem;background:var(--btn);color:var(--btn-ink);cursor:pointer}
+button:disabled{background:var(--btn-off);color:var(--btn-off-ink);cursor:default}
+button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.msg{border-radius:12px;padding:14px;margin:0}
+.msg.bad{background:var(--bad-bg);color:var(--bad)}
+.panel{background:var(--card);border-radius:16px;padding:28px 20px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+.tick{width:64px;height:64px;border-radius:50%;background:var(--good-bg);color:var(--good);display:grid;place-items:center;font-size:2rem;font-weight:800}
+.panel h2{margin:0;font-size:1.3rem}
+.panel p{margin:0;color:var(--muted)}
+.foot{font-size:.8rem;color:var(--muted);text-align:center;margin:0}
+@media (max-width:360px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1 id="title">Add a credit or debit card</h1>
+  </div>
+  <p class="sub" id="sub">We'll check this card with your bank. You won't be charged.</p>
+
+  <form id="form" novalidate hidden>
+    <div class="field">
+      <label for="cardNumber">Card number</label>
+      <div id="cardNumber" class="StripeElement"></div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label for="cardExpiry">Card expiry</label>
+        <div id="cardExpiry" class="StripeElement"></div>
+      </div>
+      <div class="field">
+        <label for="cardCvc">Security code</label>
+        <div id="cardCvc" class="StripeElement"></div>
+      </div>
+    </div>
+    <div class="field">
+      <label for="name">Name on card</label>
+      <input class="input" id="name" name="name" autocomplete="cc-name" placeholder="Full name" required>
+    </div>
+    <div class="field">
+      <label for="postal">Postal code</label>
+      <input class="input" id="postal" name="postal" autocomplete="postal-code" placeholder="A1B 2C3" maxlength="10" required>
+      <p class="hint" id="postalHint" aria-live="polite"></p>
+    </div>
+    <p class="msg bad" id="error" role="alert" hidden></p>
+    <button id="submit" type="submit" disabled>Verify card</button>
+    <p class="foot">Card details go straight to Stripe over a secure connection.</p>
+  </form>
+
+  <section class="panel" id="done" hidden>
+    <div class="tick" aria-hidden="true">✓</div>
+    <h2>Card verified</h2>
+    <p id="doneText">Thank you. No charge was made.</p>
+  </section>
+
+  <section class="panel" id="stop" hidden>
+    <h2 id="stopTitle">This link isn't working</h2>
+    <p id="stopText">Ask the shop for a new verification link.</p>
+  </section>
+</main>
+
+<script>
+(function(){
+  // Publishable key only. It is designed to be public. Never put a secret (sk_) or restricted (rk_) key here.
+  var PUBLISHABLE_KEY = "pk_live_REPLACE_ME";
+  var MAX_AGE_DAYS = 7;
+
+  var $ = function(id){ return document.getElementById(id); };
+  function stop(title, text){ $("form").hidden = true; $("sub").hidden = true; $("stopTitle").textContent = title; $("stopText").textContent = text; $("stop").hidden = false; }
+
+  var secret = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  if (location.hash) { try { history.replaceState(null, "", location.pathname); } catch(e) {} }
+
+  if (!/^pk_(live|test)_/.test(PUBLISHABLE_KEY) || PUBLISHABLE_KEY.indexOf("REPLACE_ME") > -1) { stop("Not set up yet", "This page is still being set up. Please try again later."); return; }
+  if (!/^seti_[A-Za-z0-9]+_secret_[A-Za-z0-9]+$/.test(secret)) { stop("This link isn't working", "The link looks incomplete. Ask the shop for a new verification link."); return; }
+  if (typeof Stripe !== "function") { stop("Couldn't load", "Check your connection and reload the page."); return; }
+
+  var stripe = Stripe(PUBLISHABLE_KEY);
+  var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  var style = { base: { fontFamily: '"Nunito Sans", -apple-system, "Segoe UI", Roboto, sans-serif', fontSize: "16px", color: dark ? "#f1e8e6" : "#3b2a2a", "::placeholder": { color: dark ? "#b3a3a0" : "#7a6868" } }, invalid: { color: dark ? "#f19a91" : "#a3312b" } };
+  var elements = stripe.elements({ fonts: [{ cssSrc: "https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600&display=swap" }] });
+  var cardNumber = elements.create("cardNumber", { style: style, showIcon: true, placeholder: "____ ____ ____ ____" });
+  var cardExpiry = elements.create("cardExpiry", { style: style });
+  var cardCvc = elements.create("cardCvc", { style: style, placeholder: "___" });
+
+  var state = { number:false, expiry:false, cvc:false, brand:"" };
+  var busy = false, tries = 0;
+
+  function postalInfo(v){
+    var s = (v || "").toUpperCase().replace(/\s+/g, "");
+    if (/^[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z]\d[ABCEGHJ-NPRSTV-Z]\d$/.test(s)) return { ok:true, value: s.slice(0,3) + " " + s.slice(3), country:"CA" };
+    if (/^\d{5}(-?\d{4})?$/.test(s)) return { ok:true, value: s.slice(0,5), country:"US" };
+    return { ok:false };
+  }
+  function ready(){
+    return state.number && state.expiry && state.cvc && $("name").value.trim().length > 1 && postalInfo($("postal").value).ok;
+  }
+  function refresh(){ $("submit").disabled = busy || !ready(); }
+
+  function showError(t){ var e = $("error"); e.textContent = t; e.hidden = !t; }
+
+  stripe.retrieveSetupIntent(secret).then(function(r){
+    if (r.error || !r.setupIntent) { stop("This link isn't working", "Ask the shop for a new verification link."); return; }
+    var si = r.setupIntent;
+    if (si.status === "succeeded") { stop("Already verified", "This card has already been verified. Nothing more to do."); return; }
+    if (si.status === "canceled") { stop("This link has expired", "Ask the shop for a new verification link."); return; }
+    if (si.created && (Date.now()/1000 - si.created) > MAX_AGE_DAYS*86400) { stop("This link has expired", "Ask the shop for a new verification link."); return; }
+    $("form").hidden = false;
+    cardNumber.mount("#cardNumber"); cardExpiry.mount("#cardExpiry"); cardCvc.mount("#cardCvc");
+  });
+
+  cardNumber.on("change", function(e){ state.number = e.complete; state.brand = e.brand || ""; showError(e.error ? e.error.message : ""); refresh(); });
+  cardExpiry.on("change", function(e){ state.expiry = e.complete; showError(e.error ? e.error.message : ""); refresh(); });
+  cardCvc.on("change", function(e){ state.cvc = e.complete; showError(e.error ? e.error.message : ""); refresh(); });
+  $("name").addEventListener("input", refresh);
+  $("postal").addEventListener("input", function(){ $("postal").removeAttribute("aria-invalid"); $("postalHint").textContent = ""; refresh(); });
+  $("postal").addEventListener("blur", function(){
+    var v = $("postal").value; if (!v) return;
+    var p = postalInfo(v);
+    if (p.ok) { $("postal").value = p.value; } else { $("postal").setAttribute("aria-invalid","true"); $("postalHint").textContent = "Enter a postal code like A1B 2C3 (or a 5-digit US ZIP)."; }
+    refresh();
+  });
+
+  $("form").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    if (busy || !ready()) return;
+    if (tries >= 5) { showError("Too many attempts. Ask the shop for a new verification link."); return; }
+    var p = postalInfo($("postal").value);
+    busy = true; tries++; refresh(); $("submit").textContent = "Verifying…"; showError("");
+    stripe.confirmCardSetup(secret, {
+      payment_method: { card: cardNumber, billing_details: { name: $("name").value.trim(), address: { postal_code: p.value, country: p.country } } }
+    }).then(function(r){
+      busy = false; $("submit").textContent = "Verify card";
+      if (r.error) { showError(r.error.message || "Your card couldn't be verified. Try again or use a different card."); refresh(); return; }
+      if (r.setupIntent && r.setupIntent.status === "succeeded") {
+        $("form").hidden = true; $("sub").hidden = true; $("title").hidden = true;
+        var b = state.brand && state.brand !== "unknown" ? (state.brand.charAt(0).toUpperCase() + state.brand.slice(1)) + " card verified." : "Card verified.";
+        $("doneText").textContent = b + " Thank you. No charge was made.";
+        $("done").hidden = false;
+      } else {
+        showError("Verification didn't finish. Please try again."); refresh();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
