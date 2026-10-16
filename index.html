@@ -61,6 +61,10 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 
   <form id="form" novalidate hidden>
     <div id="payment" class="pe"></div>
+    <div class="field" id="emailField" hidden>
+      <label for="email">Email</label>
+      <input class="input" id="email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+    </div>
     <div class="field">
       <label for="name">Name on card</label>
       <input class="input" id="name" name="name" autocomplete="cc-name" placeholder="Full name" required>
@@ -130,7 +134,9 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
     if (/^\d{5}(-?\d{4})?$/.test(s)) return { ok:true, value: s.slice(0,5), country:"US" };
     return { ok:false };
   }
-  function ready(){ return !!actions && cardComplete && $("name").value.trim().length > 1 && postalInfo($("postal").value).ok; }
+  var knownEmail = "";
+  function emailOk(){ return !!knownEmail || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($("email").value.trim()); }
+  function ready(){ return !!actions && cardComplete && emailOk() && $("name").value.trim().length > 1 && postalInfo($("postal").value).ok; }
   function refresh(){ $("submit").disabled = busy || !ready(); }
 
   var paymentElement = checkout.createPaymentElement({
@@ -149,11 +155,14 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
       var st = sess && sess.status && (sess.status.type || sess.status);
       if (st === "complete") { stop("Already verified", "This card has already been verified. Nothing more to do."); return; }
       if (st === "expired") { stop("This link has expired", "Ask the shop for a new verification link."); return; }
+      knownEmail = (sess && typeof sess.email === "string" && sess.email) || "";
     } catch(e) {}
+    if (!knownEmail) { $("emailField").hidden = false; $("email").required = true; }
     refresh();
   }, function(){ stop("This link has expired", "Ask the shop for a new verification link."); });
 
   $("name").addEventListener("input", refresh);
+  $("email").addEventListener("input", refresh);
   $("postal").addEventListener("input", function(){ $("postal").removeAttribute("aria-invalid"); $("postalHint").textContent = ""; refresh(); });
   $("postal").addEventListener("blur", function(){
     var v = $("postal").value; if (!v) return;
@@ -169,6 +178,7 @@ button:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
     var p = postalInfo($("postal").value);
     busy = true; tries++; refresh(); $("submit").textContent = "Verifying…"; showError("");
     Promise.resolve(actions.confirm({
+      email: knownEmail || $("email").value.trim(),
       billingAddress: { name: $("name").value.trim(), address: { country: p.country, postal_code: p.value } },
       redirect: "if_required"
     })).then(function(r){
